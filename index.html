@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ik zie je later !</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a1a; padding: 1rem; }
+  h2 { font-size: 18px; font-weight: 500; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .notif-btn { font-size: 12px; padding: 5px 12px; border: 0.5px solid #185FA5; border-radius: 8px; background: transparent; color: #185FA5; cursor: pointer; }
+  .notif-btn.granted { background: #185FA5; border-color: #185FA5; color: #fff; pointer-events: none; opacity: 0.85; }
+  .interval-row { display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .interval-row span { font-size: 12px; color: #666; }
+  .interval-btn { padding: 5px 14px; border: 0.5px solid #aaa; border-radius: 8px; background: transparent; color: #555; cursor: pointer; font-size: 13px; }
+  .interval-btn.sel { background: #185FA5; border-color: #185FA5; color: #fff; }
+  .section-label { font-size: 11px; font-weight: 500; color: #888; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 6px; }
+  .iconen-rij { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; padding: 8px 10px; background: #ebebeb; border-radius: 8px; border: 0.5px solid #ddd; min-height: 48px; }
+  .kamer-icon { padding: 5px 9px; height: 32px; background: #fff; border: 0.5px solid #bbb; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #1a1a1a; cursor: grab; user-select: none; transition: opacity 0.15s; }
+  .kamer-icon.dragging { opacity: 0.3; }
+  .kamer-icon.used { opacity: 0.3; cursor: default; border-style: dashed; }
+  .tijdlijn-wrap { overflow-x: auto; margin-bottom: 0.5rem; scroll-behavior: smooth; }
+  .tijdlijn-inner { position: relative; }
+  .tijdlijn-header { position: relative; height: 22px; margin-bottom: 2px; }
+  .tl-tick { position: absolute; font-size: 10px; color: #999; transform: translateX(-50%); white-space: nowrap; }
+  .stroken-area { position: relative; background: #ebebeb; border: 0.5px solid #ddd; border-radius: 8px; overflow: hidden; min-height: 40px; }
+  .strook-rij { height: 40px; border-bottom: 0.5px solid #ddd; position: absolute; left: 0; }
+  .strook-blok { position: absolute; top: 4px; height: 32px; border-radius: 8px; display: flex; align-items: center; gap: 4px; padding: 0 6px; overflow: visible; min-width: 44px; transition: background 0.4s, border-color 0.4s; z-index: 6; }
+  .strook-blok.normal { background: #dceefa; border: 0.5px solid #185FA5; }
+  .strook-blok.urgent { background: #f7d0d0; border: 0.5px solid #A32D2D; }
+  .blok-kamer { font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .strook-blok.normal .blok-kamer { color: #185FA5; }
+  .strook-blok.urgent .blok-kamer { color: #A32D2D; }
+  .blok-cd { font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .strook-blok.normal .blok-cd { color: #185FA5; }
+  .strook-blok.urgent .blok-cd { color: #A32D2D; }
+  .blok-bar-bg { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; }
+  .strook-blok.normal .blok-bar-bg { background: rgba(24,95,165,0.15); }
+  .strook-blok.urgent .blok-bar-bg { background: rgba(163,45,45,0.15); }
+  .blok-bar { height: 3px; transition: width 1s linear; }
+  .strook-blok.normal .blok-bar { background: #185FA5; }
+  .strook-blok.urgent .blok-bar { background: #A32D2D; }
+  .blok-cancel { position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%; font-size: 10px; background: #fff; border: 0.5px solid #bbb; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.9; z-index: 7; flex-shrink: 0; line-height: 1; padding: 0; }
+  .strook-blok.normal .blok-cancel { color: #185FA5; border-color: #185FA5; }
+  .strook-blok.urgent .blok-cancel { color: #A32D2D; border-color: #A32D2D; }
+  .blok-cancel:hover { opacity: 1; }
+  .drop-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 5; pointer-events: none; }
+  .drop-overlay.active { pointer-events: all; }
+  .drop-overlay.dragover { background: rgba(24,95,165,0.07); }
+  .nu-lijn-wrap { position: absolute; top: 0; bottom: 0; width: 2px; background: #A32D2D; pointer-events: none; z-index: 10; }
+  .nu-label { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #A32D2D; font-weight: 500; white-space: nowrap; }
+  .hint { font-size: 12px; color: #aaa; padding: 10px 12px; position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h2>Ik zie je later !</h2>
+  <button class="notif-btn" id="notifBtn" onclick="reqNotif()">Notificaties aan</button>
+</div>
+
+<div class="interval-row">
+  <span>Interval:</span>
+  <button class="interval-btn" onclick="setIv(15,event)">15 min</button>
+  <button class="interval-btn sel" onclick="setIv(30,event)">30 min</button>
+  <button class="interval-btn" onclick="setIv(60,event)">60 min</button>
+  <input type="number" id="vrijInvoer" min="1" max="240" placeholder="..." title="Vrij aantal minuten"
+    style="width:56px; padding:5px 6px; border:0.5px solid #aaa; border-radius:8px; font-size:13px; color:#555; background:transparent; text-align:center;"
+    oninput="if(this.value>0){setIvVrij(parseInt(this.value))}" />
+  <span style="font-size:11px;color:#888;">min</span>
+</div>
+
+<p class="section-label">5BGA</p>
+<div class="iconen-rij" id="rij5BGA"></div>
+<p class="section-label">5BGB</p>
+<div class="iconen-rij" id="rij5BGB"></div>
+
+<p class="section-label" style="margin-top:0.75rem;">Stroken — sleep een kamer naar de tijdlijn</p>
+
+<div class="tijdlijn-wrap" id="tijdlijnWrap">
+  <div class="tijdlijn-inner" id="tijdlijnInner">
+    <div class="tijdlijn-header" id="tijdlijnHeader"></div>
+    <div class="stroken-area" id="strokenArea">
+      <div class="drop-overlay" id="dropOverlay"></div>
+      <div class="hint" id="hint">Nog geen timers — sleep een kamer hierheen.</div>
+    </div>
+    <div class="nu-lijn-wrap" id="nuLijn">
+      <div class="nu-label" id="nuLabel">nu</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const KAMERS_A = ['0.07','0.08','0.09','0.10','0.11','0.12'];
+const KAMERS_B = ['0.27','0.28','0.29','0.30','0.31','0.32'];
+const SHIFT_START = 7, SHIFT_END = 23;
+const PX_PER_MIN = 3;
+const URGENT_THRESHOLD = 0.75;
+let selectedIv = 30;
+let dragKamer = null;
+let timers = {};
+
+function shiftMinutes() { return (SHIFT_END - SHIFT_START) * 60; }
+function totalWidth() { return shiftMinutes() * PX_PER_MIN; }
+
+function nowOffsetPx() {
+  const now = new Date();
+  const mins = (now.getHours() - SHIFT_START) * 60 + now.getMinutes() + now.getSeconds() / 60;
+  return Math.max(0, Math.min(totalWidth(), mins * PX_PER_MIN));
+}
+
+function scrollNaarNu() {
+  const wrap = document.getElementById('tijdlijnWrap');
+  const nuPx = nowOffsetPx();
+  const marge = wrap.clientWidth / 2;
+  wrap.scrollLeft = Math.max(0, nuPx - marge);
+}
+
+function buildHeader() {
+  const hdr = document.getElementById('tijdlijnHeader');
+  hdr.style.width = totalWidth() + 'px';
+  hdr.innerHTML = '';
+  for (let h = SHIFT_START; h <= SHIFT_END; h++) {
+    const px = (h - SHIFT_START) * 60 * PX_PER_MIN;
+    const tick = document.createElement('div');
+    tick.className = 'tl-tick';
+    tick.style.left = px + 'px';
+    tick.textContent = String(h).padStart(2,'0') + ':00';
+    hdr.appendChild(tick);
+  }
+}
+
+function buildStroken() {
+  const area = document.getElementById('strokenArea');
+  const inner = document.getElementById('tijdlijnInner');
+  const overlay = document.getElementById('dropOverlay');
+  area.style.width = totalWidth() + 'px';
+  inner.style.width = totalWidth() + 'px';
+  overlay.style.width = totalWidth() + 'px';
+}
+
+function buildIconen(groep, kamers) {
+  const rij = document.getElementById('rij' + groep);
+  rij.innerHTML = '';
+  kamers.forEach(k => {
+    const inUse = !!timers[k];
+    const el = document.createElement('div');
+    el.className = 'kamer-icon' + (inUse ? ' used' : '');
+    el.id = 'icon-' + k;
+    el.textContent = k;
+    el.draggable = !inUse;
+    el.addEventListener('dragstart', e => {
+      if (inUse) { e.preventDefault(); return; }
+      dragKamer = k;
+      setTimeout(() => el.classList.add('dragging'), 0);
+      e.dataTransfer.effectAllowed = 'move';
+      document.getElementById('dropOverlay').classList.add('active');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      document.getElementById('dropOverlay').classList.remove('active', 'dragover');
+    });
+    rij.appendChild(el);
+  });
+}
+
+function getPct(t) {
+  const elapsed = Date.now() - (t.endsAt - t.mins * 60000);
+  return Math.min(1, Math.max(0, elapsed / (t.mins * 60000)));
+}
+
+function herSorteer() {
+  const area = document.getElementById('strokenArea');
+  const gesorteerd = Object.values(timers).sort((a, b) => getPct(b) - getPct(a));
+  gesorteerd.forEach((t, idx) => {
+    const rij = document.getElementById('strookrij-' + t.kamer);
+    if (rij) rij.style.top = (idx * 40) + 'px';
+  });
+  area.style.minHeight = Math.max(40, gesorteerd.length * 40) + 'px';
+}
+
+function dropKamer(kamer) {
+  if (timers[kamer]) return;
+  const mins = selectedIv;
+  const ms = mins * 60 * 1000;
+  const endsAt = Date.now() + ms;
+  const startPx = nowOffsetPx();
+  const endPx = startPx + mins * PX_PER_MIN;
+  const id = Date.now() + Math.random();
+  const timeoutId = setTimeout(() => fireNotif(kamer, mins, id), ms);
+  timers[kamer] = { kamer, mins, endsAt, timeoutId, startPx, endPx, id };
+  renderStrookRij(kamer);
+  refreshHint();
+  buildIconen('5BGA', KAMERS_A);
+  buildIconen('5BGB', KAMERS_B);
+  herSorteer();
+  scrollNaarNu();
+  reqNotifSilent();
+}
+
+function renderStrookRij(kamer) {
+  const t = timers[kamer];
+  if (!t) return;
+  const area = document.getElementById('strokenArea');
+
+  let rij = document.getElementById('strookrij-' + kamer);
+  if (!rij) {
+    rij = document.createElement('div');
+    rij.className = 'strook-rij';
+    rij.id = 'strookrij-' + kamer;
+    rij.style.width = totalWidth() + 'px';
+    rij.style.top = '0px';
+    area.insertBefore(rij, document.getElementById('dropOverlay'));
+  }
+
+  let blok = document.getElementById('blok-' + kamer);
+  if (!blok) {
+    blok = document.createElement('div');
+    blok.className = 'strook-blok normal';
+    blok.id = 'blok-' + kamer;
+    rij.appendChild(blok);
+  }
+  blok.style.left = t.startPx + 'px';
+  blok.style.width = (t.endPx - t.startPx) + 'px';
+
+  const spanKamer = document.createElement('span');
+  spanKamer.className = 'blok-kamer';
+  spanKamer.textContent = kamer;
+
+  const spanCd = document.createElement('span');
+  spanCd.className = 'blok-cd';
+  spanCd.id = 'bcd-' + kamer;
+  spanCd.textContent = '--:--';
+
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'blok-cancel';
+  btnCancel.textContent = '✕';
+  btnCancel.addEventListener('click', function(e) {
+    e.stopPropagation();
+    cancelTimer(kamer);
+  });
+
+  const barBg = document.createElement('div');
+  barBg.className = 'blok-bar-bg';
+  const bar = document.createElement('div');
+  bar.className = 'blok-bar';
+  bar.id = 'bbar-' + kamer;
+  bar.style.width = '0%';
+  barBg.appendChild(bar);
+
+  blok.innerHTML = '';
+  blok.appendChild(spanKamer);
+  blok.appendChild(spanCd);
+  blok.appendChild(btnCancel);
+  blok.appendChild(barBg);
+}
+
+function cancelTimer(kamer) {
+  const t = timers[kamer]; if (!t) return;
+  clearTimeout(t.timeoutId);
+  removeTimer(kamer);
+}
+
+function speelToon(freq, delays, duur) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    delays.forEach(function(delay) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.5, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duur);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + duur);
+    });
+  } catch(e) {}
+}
+
+function speelWaarschuwing() { speelToon(660, [0], 0.3); }   // 1 korte piep bij rood
+function speelPiep() { speelToon(880, [0, 0.35], 0.4); }     // 2 piepen bij aflopen
+
+function fireNotif(kamer, mins, id) {
+  const t = timers[kamer];
+  if (!t || t.id !== id) return;
+  if (Date.now() < t.endsAt - 2000) return;
+  speelPiep();
+  if (notifSupported && Notification.permission === 'granted') {
+    try { new Notification('Controle: kamer ' + kamer, { body: mins + ' min verstreken — tijd voor controle.', requireInteraction: true }); } catch(e) {}
+  }
+  // Timer blijft rood in beeld staan — herhaal piep elke minuut totdat weggeklikt
+  t.verlopen = true;
+  t.herhalingId = setInterval(function() {
+    if (timers[kamer] && timers[kamer].verlopen) {
+      speelPiep();
+    } else {
+      clearInterval(t.herhalingId);
+    }
+  }, 60000);
+}
+
+function removeTimer(kamer) {
+  const t = timers[kamer];
+  if (t && t.herhalingId) clearInterval(t.herhalingId);
+  const rij = document.getElementById('strookrij-' + kamer);
+  if (rij) rij.remove();
+  delete timers[kamer];
+  refreshHint();
+  buildIconen('5BGA', KAMERS_A);
+  buildIconen('5BGB', KAMERS_B);
+  herSorteer();
+}
+
+function refreshHint() {
+  const hint = document.getElementById('hint');
+  if (hint) hint.style.display = Object.keys(timers).length === 0 ? 'block' : 'none';
+}
+
+function updateNuLijn() {
+  document.getElementById('nuLijn').style.left = nowOffsetPx() + 'px';
+  const now = new Date();
+  document.getElementById('nuLabel').textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+
+function setIvVrij(min) {
+  selectedIv = min;
+  document.querySelectorAll('.interval-btn').forEach(b => b.classList.remove('sel'));
+}
+
+function setIv(min, e) {
+  selectedIv = min;
+  document.querySelectorAll('.interval-btn').forEach(b => b.classList.remove('sel'));
+  e.target.classList.add('sel');
+}
+
+const notifSupported = (typeof Notification !== 'undefined');
+
+function setNotifActief() {
+  const btn = document.getElementById('notifBtn');
+  btn.textContent = 'Notificaties actief';
+  btn.classList.add('granted');
+  btn.style.cursor = 'default';
+  btn.onclick = null;
+  btn.disabled = true;
+}
+
+function reqNotif() {
+  if (!notifSupported) { alert('Notificaties worden niet ondersteund in deze browser. Gebruik Chrome voor meldingen.'); return; }
+  if (Notification.permission === 'granted') return;
+  Notification.requestPermission().then(p => { if (p === 'granted') setNotifActief(); });
+}
+function reqNotifSilent() {
+  if (!notifSupported) return;
+  if (Notification.permission !== 'granted') {
+    Notification.requestPermission().then(p => { if (p === 'granted') setNotifActief(); });
+  }
+}
+if (!notifSupported) {
+  document.getElementById('notifBtn').style.display = 'none';
+} else if (Notification.permission === 'granted') {
+  setNotifActief();
+}
+
+const overlay = document.getElementById('dropOverlay');
+overlay.addEventListener('dragover', e => { e.preventDefault(); overlay.classList.add('dragover'); });
+overlay.addEventListener('dragleave', () => overlay.classList.remove('dragover'));
+overlay.addEventListener('drop', e => {
+  e.preventDefault();
+  overlay.classList.remove('active', 'dragover');
+  if (dragKamer) { dropKamer(dragKamer); dragKamer = null; }
+});
+
+setInterval(() => {
+  const now = Date.now();
+  Object.values(timers).forEach(t => {
+    const pct = getPct(t);
+    const rem = Math.max(0, t.endsAt - now);
+    const mm = String(Math.floor(rem / 60000)).padStart(2,'0');
+    const ss = String(Math.floor((rem % 60000) / 1000)).padStart(2,'0');
+    const cd = document.getElementById('bcd-' + t.kamer);
+    const bar = document.getElementById('bbar-' + t.kamer);
+    const blok = document.getElementById('blok-' + t.kamer);
+    if (cd) cd.textContent = mm + ':' + ss;
+    if (bar) bar.style.width = Math.round(pct * 100) + '%';
+    if (blok) {
+      const wasUrgent = blok.classList.contains('urgent');
+      if (t.verlopen || pct >= URGENT_THRESHOLD) {
+        if (!wasUrgent) { if (!t.verlopen) speelWaarschuwing(); }
+        blok.classList.remove('normal'); blok.classList.add('urgent');
+        // Balk vol houden als verlopen
+        const bar = document.getElementById('bbar-' + t.kamer);
+        const cd = document.getElementById('bcd-' + t.kamer);
+        if (t.verlopen && bar) bar.style.width = '100%';
+        if (t.verlopen && cd) cd.textContent = '00:00';
+      } else {
+        blok.classList.remove('urgent'); blok.classList.add('normal');
+      }
+    }
+  });
+  herSorteer();
+  updateNuLijn();
+}, 1000);
+
+buildHeader();
+buildStroken();
+buildIconen('5BGA', KAMERS_A);
+buildIconen('5BGB', KAMERS_B);
+updateNuLijn();
+// Scroll naar NU zodra de pagina geladen is
+// Scroll naar NU bij laden, resize en na DOM-opbouw
+function scrollNaarNuBetrouwbaar() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(scrollNaarNu);
+  });
+}
+window.addEventListener('load', scrollNaarNuBetrouwbaar);
+window.addEventListener('resize', scrollNaarNu);
+setTimeout(scrollNaarNuBetrouwbaar, 200);
+
+// ResizeObserver: herbereken als venster smaller/breder wordt
+const ro = new ResizeObserver(() => scrollNaarNu());
+ro.observe(document.getElementById('tijdlijnWrap'));
+</script>
+</body>
+</html>
